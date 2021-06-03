@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  gcs-storage:
+    image: fsouza/fake-gcs-server
+    container_name: gcs-storage
+    ports:
+      - 4443:4443
+    volumes: 
+      - ./data:/data
+    command:
+      - -scheme 
+      - http
+      - -public-host
+      - localhost:4443
+      - -backend
+      - memory
+
+  s3:
+    image: localstack/localstack
+    container_name: s3
+    ports:
+      - 4566:4566
+    environment:
+      - SERVICES=s3
+
+  upload-api:
+    image: golang:1.16
+    container_name: upload-api
+    links:
+      - s3:s3
+      - gcs-storage:gcs-storage
+    command: go run cmd/uploader/main.go
+    working_dir: /app
+    ports:
+      - 9600:9600
+    volumes: 
+      - ./:/app
+    environment:
+      - S3_ENDPOINT=http://s3:4566
+      - STORAGE_EMULATOR_HOST=gcs-storage:4443
+
+  tests:
+    image: golang:1.16
+    container_name: tests
+    command: go run -timeout 30s -failfast ./...
+    working_dir: /app
+    volumes: 
+      - ./:/app
